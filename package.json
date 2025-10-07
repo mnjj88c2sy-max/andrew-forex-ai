@@ -1,0 +1,13 @@
+{
+  "name": "andrew-forex-ai",
+  "version": "1.0.0",
+  "description": "AI Trading Forecast Generator",
+  "main": "update-signals.js",
+  "scripts": {
+    "start": "node update-signals.js"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=18"
+  }
+}

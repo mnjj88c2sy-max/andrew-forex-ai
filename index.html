@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Andrew Forex AI Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>💹 Andrew Forex AI</h1>
+    <p id="capitale">💰 Capitale: €1000 (0%)</p>
+    <button id="sync-json">🔄 Aggiorna ora</button>
+  </header>
+
+  <main>
+    <section class="box">
+      <h2>Segnali AI</h2>
+      <table id="tabella-segnali">
+        <thead>
+          <tr>
+            <th>Ora</th>
+            <th>Simbolo</th>
+            <th>Lato</th>
+            <th>Entry</th>
+            <th>TP</th>
+            <th>SL</th>
+            <th>Note</th>
+            <th>Stato</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="box">
+      <h2>🧠 Log AI</h2>
+      <div id="ai-log"></div>
+    </section>
+
+    <section class="box">
+      <h2>📜 Log attività</h2>
+      <div id="log-attivita"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>© 2025 Andrew Forex AI – Simulazione AI Realtime</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

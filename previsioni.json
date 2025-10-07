@@ -1,0 +1,67 @@
+{
+  "generated_at": "2025-10-07T19:30:00Z",
+  "signals": [
+    {
+      "symbol": "EUR/USD",
+      "side": "long",
+      "entry": 1.0765,
+      "tp": 1.0815,
+      "sl": 1.0735,
+      "note": "Breakout rialzista sopra 1.0760 con momentum sostenuto",
+      "status": "in attesa",
+      "closed_at": null,
+      "result_pct": null
+    },
+    {
+      "symbol": "XAU/USD",
+      "side": "short",
+      "entry": 2379,
+      "tp": 2364,
+      "sl": 2392,
+      "note": "Pressione ribassista sotto 2380 dopo spike intraday",
+      "status": "in attesa",
+      "closed_at": null,
+      "result_pct": null
+    },
+    {
+      "symbol": "NASDAQ100",
+      "side": "long",
+      "entry": 18135,
+      "tp": 18290,
+      "sl": 18010,
+      "note": "Rimbalzo tecnico su supporto 18100",
+      "status": "chiusa",
+      "closed_at": "2025-10-07T18:50:00Z",
+      "result_pct": 0.42
+    },
+    {
+      "symbol": "BTC/USD",
+      "side": "long",
+      "entry": 122800,
+      "tp": 124400,
+      "sl": 121800,
+      "note": "Trend positivo con consolidamento sopra 122000",
+      "status": "chiusa",
+      "closed_at": "2025-10-07T18:55:00Z",
+      "result_pct": 0.39
+    }
+  ],
+  "ai_logs": [
+    {
+      "time": "2025-10-07T19:30:00Z",
+      "message": "Analisi completata — 4 segnali generati su timeframe 4H"
+    },
+    {
+      "time": "2025-10-07T19:10:00Z",
+      "message": "Monitoraggio trend BTC/USD: supporto 122k confermato"
+    },
+    {
+      "time": "2025-10-07T18:55:00Z",
+      "message": "BTC/USD chiuso in profitto +0.39%"
+    },
+    {
+      "time": "2025-10-07T18:50:00Z",
+      "message": "NASDAQ100 chiuso in profitto +0.42%"
+    }
+  ]
+}
