@@ -74,4 +74,3 @@ async function run() {
 }
 
 run();
-setInterval(run, 60_000); // test (poi 15 min)
