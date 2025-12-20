@@ -1,4 +1,3 @@
-import fetch from "node-fetch";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -6,7 +5,6 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const TF = "M15";
 const ASSET = "EURUSD";
 
-// TwelveData API keys (comma-separated)
 const KEYS = (process.env.TWELVEDATA_KEYS || "")
   .split(",")
   .map(k => k.trim())
@@ -75,6 +73,5 @@ async function run() {
   }
 }
 
-// run every 15 minutes (test: every 60s)
 run();
-setInterval(run, 60_000);
+setInterval(run, 60_000); // test (poi 15 min)
