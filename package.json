@@ -1,13 +1,17 @@
 {
   "name": "andrew-forex-ai",
   "version": "1.0.0",
-  "description": "AI Trading Forecast Generator",
+  "description": "Market data collector for Supabase",
+  "type": "module",
   "main": "update-signals.js",
   "scripts": {
     "start": "node update-signals.js"
   },
-  "dependencies": {},
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.3",
+    "node-fetch": "^3.3.2"
   }
 }
