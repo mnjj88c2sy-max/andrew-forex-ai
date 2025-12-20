@@ -1,9 +1,11 @@
+import fetch from "node-fetch";
 import { createClient } from "@supabase/supabase-js";
 
+/* =====================
+   ENV
+===================== */
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const TF = "M15";
-const ASSET = "EURUSD";
 
 const KEYS = (process.env.TWELVEDATA_KEYS || "")
   .split(",")
@@ -21,6 +23,25 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false }
 });
 
+/* =====================
+   ASSETS
+===================== */
+const ASSETS = [
+  { symbol: "EUR/USD", asset: "EURUSD" },
+  { symbol: "GBP/USD", asset: "GBPUSD" },
+
+  { symbol: "BTC/USD", asset: "BTCUSD" },
+  { symbol: "ETH/USD", asset: "ETHUSD" },
+
+  { symbol: "NASDAQ", asset: "NASDAQ100" },
+  { symbol: "SPX", asset: "SP500" }
+];
+
+const TF = "M15";
+
+/* =====================
+   API KEY ROTATION
+===================== */
 let keyIndex = 0;
 function nextKey() {
   const k = KEYS[keyIndex % KEYS.length];
@@ -28,24 +49,29 @@ function nextKey() {
   return k;
 }
 
-async function fetchEURUSD() {
+/* =====================
+   FETCH GENERIC
+===================== */
+async function fetchCandles({ symbol, asset }) {
   const apiKey = nextKey();
+
   const url =
     "https://api.twelvedata.com/time_series" +
-    "?symbol=EUR/USD" +
+    `?symbol=${encodeURIComponent(symbol)}` +
     "&interval=15min" +
-    "&outputsize=5" +
+    "&outputsize=10" +
     "&apikey=" + apiKey;
 
   const res = await fetch(url);
   const json = await res.json();
 
-  if (json.status === "error") {
-    throw new Error(json.message || "TwelveData error");
+  if (json.status === "error" || !json.values) {
+    console.warn(`⚠️ No data for ${asset}`);
+    return [];
   }
 
   return json.values.map(v => ({
-    asset: ASSET,
+    asset,
     tf: TF,
     created_at: new Date(v.datetime.replace(" ", "T") + "Z").toISOString(),
     open: Number(v.open),
@@ -56,21 +82,35 @@ async function fetchEURUSD() {
   }));
 }
 
+/* =====================
+   MAIN RUN
+===================== */
 async function run() {
-  try {
-    console.log("⏳ Fetch EURUSD M15");
-    const rows = await fetchEURUSD();
+  console.log("⏳ Fetch market candles");
 
-    const { error } = await supabase
-      .from("market_candles")
-      .upsert(rows, { onConflict: "asset,tf,created_at" });
+  let allRows = [];
 
-    if (error) throw error;
-
-    console.log(`✅ Upsert OK: ${rows.length} candles`);
-  } catch (e) {
-    console.error("❌", e.message);
+  for (const a of ASSETS) {
+    try {
+      const rows = await fetchCandles(a);
+      allRows.push(...rows);
+    } catch (e) {
+      console.error(`❌ ${a.asset}`, e.message);
+    }
   }
+
+  if (!allRows.length) {
+    console.log("ℹ️ No candles to upsert");
+    return;
+  }
+
+  const { error } = await supabase
+    .from("market_candles")
+    .upsert(allRows, { onConflict: "asset,tf,created_at" });
+
+  if (error) throw error;
+
+  console.log(`✅ Upsert OK: ${allRows.length} candles`);
 }
 
 run();
