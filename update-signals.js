@@ -1,99 +1,80 @@
-const fs = require("fs");
+import fetch from "node-fetch";
+import { createClient } from "@supabase/supabase-js";
 
-const now = new Date();
-const day = now.getUTCDay();
-if (day === 0 || day === 6) {
-  console.log("⛔ Mercati chiusi - Nessuna previsione generata.");
-  const output = {
-    generated_at: now.toISOString(),
-    signals: [],
-    ai_logs: [
-      {
-        time: now.toISOString(),
-        message: "Mercati chiusi nel weekend. Nessuna previsione generata."
-      }
-    ]
-  };
-  fs.writeFileSync("previsioni.json", JSON.stringify(output, null, 2));
-  process.exit(0);
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const TF = "M15";
+const ASSET = "EURUSD";
+
+// TwelveData API keys (comma-separated)
+const KEYS = (process.env.TWELVEDATA_KEYS || "")
+  .split(",")
+  .map(k => k.trim())
+  .filter(Boolean);
+
+if (!SUPABASE_URL || !SERVICE_KEY) {
+  throw new Error("Missing Supabase credentials");
+}
+if (!KEYS.length) {
+  throw new Error("Missing TWELVEDATA_KEYS");
 }
 
-const assets = [
-  {
-    symbol: "EUR/USD",
-    base: 1.0750,
-    volatility: 0.004,
-    noteLong: "Breakout sopra 1.0750 con momentum rialzista",
-    noteShort: "Pressione sotto 1.0750 con momentum ribassista"
-  },
-  {
-    symbol: "XAU/USD",
-    base: 2380,
-    volatility: 25,
-    noteLong: "Rimbalzo tecnico da supporto 2360",
-    noteShort: "Pressione ribassista sotto 2380 dopo spike intraday"
-  },
-  {
-    symbol: "NASDAQ100",
-    base: 18100,
-    volatility: 120,
-    noteLong: "Buy tecnico dopo rimbalzo da 18000",
-    noteShort: "Vendite sotto 18100 con target 17900"
-  },
-  {
-    symbol: "BTC/USD",
-    base: 122000,
-    volatility: 800,
-    noteLong: "Momentum positivo con supporto 122k in tenuta",
-    noteShort: "Pressione sotto 122k dopo eccesso rialzista"
-  }
-];
-
-function rand(min, max) {
-  return Math.random() * (max - min) + min;
-}
-
-const signals = assets.map(a => {
-  const side = Math.random() > 0.5 ? "long" : "short";
-  const entry =
-    side === "long" ? a.base + rand(0, a.volatility) : a.base - rand(0, a.volatility);
-  const tp = side === "long" ? entry + a.volatility : entry - a.volatility;
-  const sl = side === "long" ? entry - a.volatility / 2 : entry + a.volatility / 2;
-
-  const closed = Math.random() < 0.3;
-  const result_pct = closed ? rand(-0.8, 1.5).toFixed(2) : null;
-  const closed_at = closed ? new Date().toISOString() : null;
-
-  return {
-    symbol: a.symbol,
-    side,
-    entry: Number(entry.toFixed(4)),
-    tp: Number(tp.toFixed(4)),
-    sl: Number(sl.toFixed(4)),
-    note: side === "long" ? a.noteLong : a.noteShort,
-    generated_at: now.toISOString(),
-    closed_at,
-    result_pct,
-    status: closed ? "chiusa" : "in attesa"
-  };
+const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
+  auth: { persistSession: false }
 });
 
-const ai_logs = [
-  {
-    time: now.toISOString(),
-    message: `🧠 Generati ${signals.length} segnali (${signals.filter(s => s.side === "long").length} long / ${signals.filter(s => s.side === "short").length} short).`
-  },
-  {
-    time: now.toISOString(),
-    message: "✅ Analisi completata e salvata nel file previsioni.json."
+let keyIndex = 0;
+function nextKey() {
+  const k = KEYS[keyIndex % KEYS.length];
+  keyIndex++;
+  return k;
+}
+
+async function fetchEURUSD() {
+  const apiKey = nextKey();
+  const url =
+    "https://api.twelvedata.com/time_series" +
+    "?symbol=EUR/USD" +
+    "&interval=15min" +
+    "&outputsize=5" +
+    "&apikey=" + apiKey;
+
+  const res = await fetch(url);
+  const json = await res.json();
+
+  if (json.status === "error") {
+    throw new Error(json.message || "TwelveData error");
   }
-];
 
-const output = {
-  generated_at: now.toISOString(),
-  signals,
-  ai_logs
-};
+  return json.values.map(v => ({
+    asset: ASSET,
+    tf: TF,
+    created_at: new Date(v.datetime.replace(" ", "T") + "Z").toISOString(),
+    open: Number(v.open),
+    high: Number(v.high),
+    low: Number(v.low),
+    close: Number(v.close),
+    volume: v.volume ? Number(v.volume) : null
+  }));
+}
 
-fs.writeFileSync("previsioni.json", JSON.stringify(output, null, 2));
-console.log("✅ previsioni.json aggiornato:", now.toLocaleString());
+async function run() {
+  try {
+    console.log("⏳ Fetch EURUSD M15");
+    const rows = await fetchEURUSD();
+
+    const { error } = await supabase
+      .from("market_candles")
+      .upsert(rows, { onConflict: "asset,tf,created_at" });
+
+    if (error) throw error;
+
+    console.log(`✅ Upsert OK: ${rows.length} candles`);
+  } catch (e) {
+    console.error("❌", e.message);
+  }
+}
+
+// run every 15 minutes (test: every 60s)
+run();
+setInterval(run, 60_000);
