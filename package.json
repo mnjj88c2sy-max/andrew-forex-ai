@@ -5,7 +5,7 @@
   "type": "module",
   "main": "update-signals.js",
   "scripts": {
-    "start": "node update-signals.js"
+    "start": "node update-market-candles.js"
   },
   "engines": {
     "node": ">=18"
