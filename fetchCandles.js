@@ -1,85 +1,108 @@
+// fetchCandles.js
+// Provider: Twelve Data (https://twelvedata.com/)
+// Reads latest candles and returns in a normalized format for DB insert.
+
 import fetch from "node-fetch";
-import { createClient } from "@supabase/supabase-js";
 
-/* =========================
-   SUPABASE
-========================= */
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const BASE_URL = "https://api.twelvedata.com";
 
-/* =========================
-   TWELVE DATA API KEYS
-========================= */
-const API_KEYS = [
-  "e060bb278b4a4eed90bab9403f192fac",
-  "8634cf3cd5364a15a50ba82d7f6a1784",
-  "ae864fb92ebe43b8ad27da796410ccfc"
-];
-
-let keyIndex = 0;
-function getApiKey() {
-  const key = API_KEYS[keyIndex];
-  keyIndex = (keyIndex + 1) % API_KEYS.length;
-  return key;
+function getKeys() {
+  const raw = process.env.TWELVEDATA_KEYS || "";
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
-/* =========================
-   SYMBOL MAPPING
-========================= */
-function mapSymbol(asset) {
-  // Twelve Data richiede alcuni simboli specifici
+let rrIndex = 0;
+function pickKeyRoundRobin() {
+  const keys = getKeys();
+  if (!keys.length) throw new Error("Missing TWELVEDATA_KEYS env var (comma separated).");
+  rrIndex = (rrIndex + 1) % keys.length;
+  return keys[rrIndex];
+}
+
+/**
+ * Map your internal symbols to TwelveData symbols.
+ * You can adjust these mappings if your provider uses different tickers.
+ */
+export function toProviderSymbol(symbol) {
   const map = {
-    NAS100: "NASDAQ",
+    // CRYPTO
+    BTCUSD: "BTC/USD",
+    ETHUSD: "ETH/USD",
+    SOLUSD: "SOL/USD",
+    XRPUSD: "XRP/USD",
+
+    // FOREX
+    EURUSD: "EUR/USD",
+    GBPUSD: "GBP/USD",
+    USDJPY: "USD/JPY",
+    AUDUSD: "AUD/USD",
+
+    // INDICES (TwelveData common symbols)
+    NAS100: "NDX",     // Nasdaq 100 index
+    NASDAQ100: "NDX",
+    SP500: "SPX",      // S&P 500 index
     SPX500: "SPX",
-    OIL: "WTI"
+    SP500USD: "SPX",
+
+    // COMMODITIES
+    XAUUSD: "XAU/USD",
+    OIL: "WTI",        // often "WTI" or "CL1!" depending on provider
   };
-  return map[asset] || asset;
+
+  return map[symbol] || symbol;
 }
 
-/* =========================
-   FETCH + STORE
-========================= */
-export async function fetchAndStoreCandle(asset) {
-  try {
-    const symbol = mapSymbol(asset.symbol);
-    const apiKey = getApiKey();
+/**
+ * tf: "M15" only for now (your DB shows M15)
+ * output: [{ timeISO, open, high, low, close, volume }]
+ */
+export async function fetchCandles({ symbol, tf = "M15", limit = 200 }) {
+  const providerSymbol = toProviderSymbol(symbol);
 
-    const url = `https://api.twelvedata.com/time_series` +
-      `?symbol=${symbol}` +
-      `&interval=15min` +
-      `&outputsize=1` +
-      `&apikey=${apiKey}`;
+  const intervalMap = {
+    M1: "1min",
+    M5: "5min",
+    M15: "15min",
+    M30: "30min",
+    H1: "1h",
+    H4: "4h",
+    D1: "1day",
+    W1: "1week",
+  };
 
-    const res = await fetch(url);
-    const data = await res.json();
+  const interval = intervalMap[tf] || "15min";
+  const apiKey = pickKeyRoundRobin();
 
-    if (!data.values || !data.values.length) {
-      console.warn("⚠️ No data for", asset.symbol, data);
-      return;
-    }
+  const url =
+    `${BASE_URL}/time_series?symbol=${encodeURIComponent(providerSymbol)}` +
+    `&interval=${encodeURIComponent(interval)}` +
+    `&outputsize=${encodeURIComponent(String(limit))}` +
+    `&format=JSON&apikey=${encodeURIComponent(apiKey)}`;
 
-    const c = data.values[0];
+  const res = await fetch(url, { method: "GET" });
+  const json = await res.json().catch(() => ({}));
 
-    const candle = {
-      asset: asset.symbol,
-      tf: "M15",
-      open: Number(c.open),
-      high: Number(c.high),
-      low: Number(c.low),
-      close: Number(c.close),
-      timestamp: new Date(c.datetime).toISOString()
-    };
-
-    const { error } = await supabase
-      .from("market_candles")
-      .insert(candle);
-
-    if (error) throw error;
-
-    console.log("✅ Candle saved:", asset.symbol);
-  } catch (err) {
-    console.error("❌ Error", asset.symbol, err.message);
+  // TwelveData error format
+  if (!res.ok || json?.status === "error") {
+    const msg = json?.message || json?.code || `HTTP ${res.status}`;
+    throw new Error(`fetchCandles(${symbol}) failed: ${msg}`);
   }
+
+  const values = Array.isArray(json?.values) ? json.values : [];
+  // TwelveData returns newest-first; we normalize to newest-first anyway.
+  const candles = values
+    .map((v) => ({
+      timeISO: new Date(v.datetime).toISOString(),
+      open: Number(v.open),
+      high: Number(v.high),
+      low: Number(v.low),
+      close: Number(v.close),
+      volume: v.volume != null ? Number(v.volume) : null,
+    }))
+    .filter((c) => Number.isFinite(c.open) && Number.isFinite(c.close));
+
+  return { symbol, tf, providerSymbol, candles };
 }
