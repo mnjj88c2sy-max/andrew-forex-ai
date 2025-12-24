@@ -1,73 +1,46 @@
-const jsonUrl = "https://andrew-forex.netlify.app/previsioni.json";
-const capitaleIniziale = 1000;
+import { AI_ENABLED } from "./config.js";
+import { buildTradeContext } from "./ai_trade_context.js";
+import { getAiTradeDecision } from "./ai_trade_decision.js";
+import { applyTradeGuardrails } from "./ai_trade_guardrails.js";
+import { logAiTradeDecision } from "./ai_trade_logger.js";
 
-// === Aggiorna dashboard ===
-async function aggiornaDashboard() {
-  try {
-    const res = await fetch(jsonUrl + "?_=" + Date.now());
-    const dati = await res.json();
-    aggiornaSegnali(dati.signals || []);
-    aggiornaLogAI(dati.ai_logs || []);
-    aggiornaCapitale(dati.signals || []);
-    scriviLog("✅ Dati aggiornati con successo.");
-  } catch (err) {
-    scriviLog("❌ Errore: " + err.message);
-  }
-}
+async function manageOpenPosition(position, indicators, risk, aiMemory) {
+  if (!AI_ENABLED || !position.isOpen) return;
 
-// === Segnali ===
-function aggiornaSegnali(segnali) {
-  const tbody = document.querySelector("#tabella-segnali tbody");
-  tbody.innerHTML = "";
-  if (segnali.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8">Nessun segnale disponibile</td></tr>`;
-    return;
+  const context = buildTradeContext({
+    asset: position.asset,
+    timeframe: position.tf,
+    position,
+    indicators,
+    risk,
+    aiMemory
+  });
+
+  const ai = await getAiTradeDecision(context);
+  const finalDecision = applyTradeGuardrails(context, ai);
+
+  let executionResult = { executed: false };
+
+  if (finalDecision.action === "FULL_CLOSE") {
+    executionResult = closePosition(position.id);
   }
-  segnali.forEach(s => {
-    const tr = document.createElement("tr");
-    const stato = s.closed_at ? "CHIUSA" : s.status?.toUpperCase() || "ATTESA";
-    tr.innerHTML = `
-      <td>${s.generated_at ? new Date(s.generated_at).toLocaleTimeString() : "-"}</td>
-      <td>${s.symbol}</td>
-      <td>${s.side}</td>
-      <td>${s.entry}</td>
-      <td>${s.tp}</td>
-      <td>${s.sl}</td>
-      <td>${s.note || "-"}</td>
-      <td>${stato}</td>`;
-    tbody.appendChild(tr);
+
+  if (finalDecision.action === "PARTIAL_CLOSE") {
+    executionResult = partialClose(position.id, finalDecision.params.partial_close_pct);
+  }
+
+  if (finalDecision.action === "TIGHTEN_SL") {
+    executionResult = updateStopLoss(position.id, finalDecision.params.new_sl);
+  }
+
+  await logAiTradeDecision({
+    supabaseClient,
+    asset: position.asset,
+    positionId: position.id,
+    context,
+    aiRaw: ai.raw,
+    aiDecision: ai.decision,
+    finalDecision,
+    executionResult
   });
 }
-
-// === Log AI ===
-function aggiornaLogAI(logs) {
-  const box = document.getElementById("ai-log");
-  box.innerHTML = logs.slice(-10).reverse().map(l =>
-    `[${new Date(l.time).toLocaleTimeString()}] ${l.message}`
-  ).join("\n");
-}
-
-// === Capitale ===
-function aggiornaCapitale(segnali) {
-  const profitto = segnali
-    .filter(s => s.result_pct)
-    .reduce((tot, s) => tot + (s.result_pct / 100) * capitaleIniziale, 0);
-  const totale = capitaleIniziale + profitto;
-  const perc = ((totale - capitaleIniziale) / capitaleIniziale * 100).toFixed(2);
-  const el = document.getElementById("capitale");
-  el.textContent = `💰 Capitale: €${totale.toFixed(2)} (${perc}%)`;
-  el.style.color = perc >= 0 ? "#00ff88" : "#ff4444";
-}
-
-// === Log attività ===
-function scriviLog(msg) {
-  const log = document.getElementById("log-attivita");
-  const div = document.createElement("div");
-  div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-  log.prepend(div);
-}
-
-// === Auto-update ogni 5 minuti ===
-setInterval(aggiornaDashboard, 5 * 60 * 1000);
-document.getElementById("sync-json")?.addEventListener("click", aggiornaDashboard);
-aggiornaDashboard();
